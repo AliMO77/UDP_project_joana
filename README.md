@@ -21,30 +21,29 @@ This project is a UDP-based file transfer system designed to transfer files from
    cd your-repository-directory
 
 ## Running the Server
-To start the server, navigate to the directory containing `server.py` and run:
-```sh
-python3 server.py
+1. To start the server, navigate to the directory containing `FileServer.py` and run:
+   ```sh
+    python3 FileServer.py
 
 
-This will start the file server, ready to accept connections from clients.
-Running the Client(s)
+This will start the file server, ready to accept connections from clients.Running the Client(s)
 
-To start a client session, use the following command:
+2. To start a client session, use the following command:
 
-sh
+    ```sh
 
-python3 client_initiator.py <num_processes> <filename>
+    python3 client_initiator.py <num_processes> <filename>
 
     <num_processes>: Total number of client processes to simulate.
     <filename>: The name of the file to transfer.
 
-Example:
+3. Example:
 
-sh
+    ```sh
 
-python3 client_initiator.py 5 myfile.txt
+    python3 client_initiator.py 5 myfile.txt
 
-How It Works
+## How It Works
 
     Server: Waits for file requests and sends the requested file in frames, handling retransmission requests as needed.
     Client: Requests a file and receives it in frames, verifying the file integrity at the end of the transmission using a SHA-256 hash received from the server.
@@ -52,15 +51,9 @@ How It Works
 Customization
 
 You can customize various parameters within the FileClient and FileServer classes, including:
-
     Window size
     Timeout durations
     And more
-
-
-
-
-
 
 
 **Notes for Further Development:**
