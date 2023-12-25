@@ -64,4 +64,3 @@ You can customize various parameters within the FileClient and FileServer classe
 - **Testing**: Implement comprehensive testing to ensure your system works as expected under various network conditions and loads.
 - **Security**: Consider the security implications of your system, especially if it's used in a production environment.
 
-Replace placeholders like `https://your-repository-url` and `your-repository-directory` with your actual GitHub repository URL and directory name. Adjust any other instructions or descriptions to match your project's specifics.
