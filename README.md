@@ -26,7 +26,9 @@ This project is a UDP-based file transfer system designed to transfer files from
     python3 FileServer.py
 
 
-This will start the file server, ready to accept connections from clients.Running the Client(s)
+This will start the file server, ready to accept connections from clients.
+
+Running the Client(s):
 
 2. To start a client session, use the following command:
 
