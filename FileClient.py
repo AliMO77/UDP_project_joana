@@ -2,6 +2,7 @@ import socket
 import random
 import hashlib
 import socket
+import os
 
 class FileClient:
     def __init__(self,id_process,total_process,filename,probability, window,server_ip='127.0.0.1', server_port=12345):
@@ -31,6 +32,10 @@ class FileClient:
 
    
     def request_file(self, file_path='received_file.txt'):
+        folder_path = './downloads'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+        file_path = os.path.join(folder_path, file_path)
         try:
             # Send request to server
             message = f"request_file,id_process={self.id_process},total_process={self.total_process},filename={self.filename},window_size={self.window}"
