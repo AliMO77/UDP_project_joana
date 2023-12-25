@@ -1,4 +1,4 @@
-# UDP File Transfer System
+# GO-BACK-N UDP File Transfer System
 
 ## Overview
 This project is a UDP-based file transfer system designed to transfer files from a server to multiple clients concurrently. It includes integrity checks using SHA-256 hashing to ensure file consistency. The system uses a sliding window protocol to manage network traffic and handle out-of-order and lost frames.
