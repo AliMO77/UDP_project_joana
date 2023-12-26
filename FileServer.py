@@ -7,6 +7,8 @@ import time
 import logging
 logging.basicConfig(level=logging.INFO)
 import hashlib
+import sys
+
 class ClientInfo:
     def __init__(self, client_id, total_clients, window_size):
         self.client_id = client_id
@@ -86,77 +88,105 @@ class FileServer:
             print(f"Failed to send data to {address}: {e}")
 
     def handle_transmission(self, address, id_process, total_process, filename, window_size):
+        print(f"window size of client {id_process} to Client {window_size}")
         with open(self.file_path, "rb") as file:
             frames = [file.read(self.udp_payload_size - self.seq_number_size) for _ in range(self.num_frames)]
+            
+            # Initialize window variables
+            window_start = 0
+            window_end = min(window_start + window_size - 1, len(frames) - 1)
 
-            current_frame = 0
-
-            while current_frame < len(frames):
-                    
+            # Send initial window of frames
+            for current_frame in range(window_start, min(window_end + 1, len(frames))):
                 seq_str = str(current_frame).zfill(self.seq_number_size).encode()
                 frame = seq_str + frames[current_frame]
-                self.send_sock.sendto(frame, address)
-                print(f"Sent frame {current_frame} to Client {id_process}")
-
+                self.safe_sendto(frame, address)
+                print(f"#Sent frame {current_frame} to Client {id_process}")
+            print(f"**************")
+                
+            sent_frames = set(range(window_start, min(window_end + 1, len(frames))))
+            while window_start < len(frames)-1:
+                
+                # Gather ACKs from all clients
                 acks = [client_info.acknowledged_frame for client_info in self.clients.values()]
-                timeout_start = time.time()
+                min_ack = min(acks) if acks else -1
                
-                while not all(ack >= current_frame for ack in acks):
-                             
-                    try:
-                        #self.recv_sock.settimeout(3)  # Set a reasonable timeout    
+                window_end = min(window_start + window_size - 1, len(frames) - 1)
+                
+                # Slide window and send new frames if ACKs received
+                if min_ack >= window_start:
+                    print(f'******************************client {id_process} window was at : [{window_start},{window_end}]')
+                    window_start = min_ack + 1
+                    window_end = min(window_start + window_size - 1, len(frames) - 1)
+                    
+                    for current_frame in range(window_start, min(window_end + 1, len(frames))):
+                        seq_str = str(current_frame).zfill(self.seq_number_size).encode()
+                        frame = seq_str + frames[current_frame]
+                        self.safe_sendto(frame, address)
+                        sent_frames.add(current_frame)  # Add to sent frames   
+                        print(f'******************************client {id_process} window moved to : [{window_start},{window_end}]')
+                        print(f"\n#Sent frame {current_frame} to Client {id_process}")
+                        
+                #wait for acks
+                timeout_start = time.time()
+                print('waiting acks for frames: ',sent_frames)
+                try:
+                    while not all(ack >= min(sent_frames, default=-1) for ack in acks):
+
                         ack, ack_address = self.recv_sock.recvfrom(1024)
                         ack_content = ack.decode().split(',')
 
                         ack_num = int(ack_content[1])
                         ack_client_id = int(ack_content[2])
 
-                        if ack_content[0] == 'ack':
-                            print(f"Received ACK {ack_num} from Client {ack_client_id}")
+                        if ack_content[0] == 'ack' and ack_num in sent_frames:
+                            print(f"\n---Received ACK {ack_num} from Client {ack_client_id}")
                             with self.clients_lock:
-                                if ack_address in self.clients and ack_num == current_frame:
-                                    self.clients[ack_address].acknowledged_frame = ack_num
-                                    print(f"Client {ack_client_id}'s last acknowledged frame updated to {ack_num}")
-                                    print('*****\n')
+                                if ack_address in self.clients:
+                                    self.clients[ack_address].acknowledged_frame = ack_num 
+                                    print(f"---Client {ack_client_id}'s last acknowledged frame updated to {ack_num}\n")
+                                    # Efficiently discard frames up to the acknowledged one
+                                    # sent_frames.discard(ack_num)
+                                    frames_to_discard = {frame for frame in sent_frames if frame <= ack_num}
+                                    sent_frames.difference_update(frames_to_discard)   
                         
-                        if ack_content[0] == 'retransmit':
-                            requested_frame = int(ack_content[1])
+                        requested_frame = int(ack_content[1])
+                        if ack_content[0] == 'retransmit' and requested_frame in sent_frames:
                             if 0 <= requested_frame < len(frames):
                                 # Prepare and send the requested frame
                                 seq_str = str(requested_frame).zfill(self.seq_number_size).encode()
                                 frame_to_retransmit = seq_str + frames[requested_frame]
                                 self.safe_sendto(frame_to_retransmit, ack_address)
-                                print(f"Retransmitted frame {requested_frame} to Client {ack_client_id}")
+                                print(f"---Retransmitted frame {requested_frame} to Client {ack_client_id}")
                                 self.clients[ack_address].retransmissions+=1
                                
                                 with self.clients_lock:
-                                    if ack_address in self.clients and requested_frame >= current_frame:
+                                    if ack_address in self.clients :
                                         self.clients[ack_address].acknowledged_frame = ack_num
-                                        print(f"Client {ack_client_id}'s last acknowledged frame updated to {ack_num} due to retransmission request")
+                                        print(f"---Client {ack_client_id}'s last acknowledged frame updated to {ack_num} due to retransmission request")
                                         print('*****\n')
 
                         acks = [client_info.acknowledged_frame for client_info in self.clients.values()]
-                        print('all acks:',acks)
                         
-                        if time.time() - self.clients[ack_address].last_ack_time > 3:
-                            print(f"Timeout waiting for ACK for frame {current_frame} from Client {id_process}")
-                            if self.clients[address].acknowledged_frame < current_frame:
-                                self.safe_sendto(frame, address)
-                                print(f"Resent frame {current_frame} to Client {id_process}")
-                                self.clients[address].retransmissions+=1
-                                self.clients[ack_address].last_ack_time = time.time()
+                        
+                        if time.time() - self.clients[ack_address].last_ack_time > 5:
+                            print(f"~~~~~Timeout waiting for ACK for frames {sent_frames} from Client {id_process}")
+                            for frame_to_check in sent_frames:
+                                if self.clients[address].acknowledged_frame < frame_to_check:  
+                                    self.safe_sendto(frame, address)
+                                    print(f"~~~~~Resent frame {window_start} to Client {id_process}")
+                                    self.clients[address].retransmissions+=1
+                                    self.clients[ack_address].last_ack_time = time.time()
                        
                         # Check for a global timeout to avoid infinite waiting
-                        if time.time() - timeout_start > 15:
-                            print("Timeout waiting for all ACKs. Proceeding to next frame.")
-                            break
-                   
-                    except Exception as e:
+                        if time.time() - timeout_start > 30:
+                            print("Timeout waiting for all ACKs. Restarting from start of window...")
+                            break      
+                except Exception as e:
                             print(e)          
 
-                    time.sleep(0.1) 
+                time.sleep(0.1) 
                 
-                current_frame += 1
 
             with self.clients_lock:
                 checksum = self.calculate_file_hash(self.file_path)
@@ -203,7 +233,9 @@ class FileServer:
                     
 
                     if len(client_requests) == total_clients:
+                        
                         print("All client requests received. Starting to handle requests.\n")
+                        print("================================ [ BEGIN ] ================================ ✨\n")
                         for request in client_requests:
                             # Create a new thread for each client request
                             address, client_id, total_clients, filename, window_size = request
@@ -214,6 +246,7 @@ class FileServer:
                 if data.decode() == 'EOR':
                     end_time = time.time()  # Stop the timer 
                     total_time = end_time - start_time  # Calculate total time taken
+                    print("================================ [ THE END ] ================================ ✨")
                     print(f"\nTransmissions completed, Total time taken to handle requests: {total_time:.2f} seconds.")
                     suming = []
                     for client in self.clients.values():

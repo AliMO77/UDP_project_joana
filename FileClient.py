@@ -11,7 +11,7 @@ class FileClient:
         self.total_process = total_process
         self.filename = filename
         self.probability = 0
-        self.window = 3
+        self.window = window
 
         # Create a UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
