@@ -76,39 +76,38 @@ class FileServer:
                     client_info.total_clients = total_clients
                     client_info.window_size = window_size
 
-    def send_EOF_signal(self,maxframe,client_acks):
+    def send_EOF_signal(self,address,maxframe,client_acks):
         try:
             checksum = self.calculate_file_hash(self.file_path)
             eof_frame = f'EOF,{checksum}'
             with self.clients_lock:
-                for client in self.clients:
-                    id =self.clients[client].client_id
-                    if client_acks[id] >= maxframe:
-                        self.send_sock.sendto(eof_frame.encode(), client)
-                        print(f"Sent end-of-file signal to Client {self.clients[client].client_id}")
+                
+                id =self.clients[address].client_id
+                if client_acks[id] >= maxframe:
+                    self.send_sock.sendto(eof_frame.encode(), address)
+                    print(f"Sent end-of-file signal to Client {self.clients[address].client_id}")
         except Exception as e:
             print(f"Exception occured in function 'send_EOF_signal'{e}")
         
 
    
-    def safe_sendto_inwindow(self, frames,window_size,base,next_seq_num):
+    def safe_sendto_inwindow(self, address,frames,window_size,base,next_seq_num):
         try:
             # Send frames in the window
             with self.clients_lock:
                 while next_seq_num < (base + window_size) and next_seq_num < len(frames):
                     seq_str = str(next_seq_num).zfill(self.seq_number_size).encode()
                     frame = seq_str + frames[next_seq_num]
-                    for client_address in self.clients:
-                        self.send_sock.sendto(frame, client_address)
-                        print(f"Sent frame {next_seq_num} to Client {self.clients[client_address].client_id}")
+                    self.send_sock.sendto(frame, address)
+                    print(f"Sent frame {next_seq_num} to Client {self.clients[address].client_id}")
                     next_seq_num += 1
                     
         except Exception as e:
-            print(f"Exception occured in function 'safe_sendto_inwindow', Failed to send data: {e}")
+            print(f"Exception occured in function 'safe_sendto_inwindow': {e}")
         return next_seq_num
         
 
-    def update_aknowledgements(self,ack,client_acks):
+    def update_aknowledgements(self,address,ack,client_acks):
        try:
             ack_content = ack.decode().split(',')
             if ack_content[0] == 'ack':
@@ -117,17 +116,13 @@ class FileServer:
                 # Update the highest acked frame for this client
                 if ack_client_id in  [client.client_id for client in self.clients.values()]:     
                     client_acks[ack_client_id] = max(client_acks[ack_client_id], ack_num)
-                    print(f"Received ACK {ack_num} from Client {ack_client_id}")      
+                    print(f"Received ACK {ack_num} from Client {ack_client_id}")
+                    self.clients[address].last_ack_time = time.time()  
+                      
        except Exception as e:
             print(f"Exception occured in function 'update_aknowledgements', couldn't Received ACK: {e}")
+       
     
-    def find_next_base(self,client_acks, current_base, max_frame):
-        print(f"base was at {current_base}")
-        while current_base < max_frame and all(ack >= current_base for ack in client_acks.values()):
-            current_base += 1
-        print(f"base moved to {current_base}")
-        return current_base
-
     
     def handle_transmission(self, address, id_process, total_process, filename, window_size):
         with open(self.file_path, "rb") as file:
@@ -137,28 +132,32 @@ class FileServer:
                 base = 0
                 next_seq_num = 0
                 client_acks = {client.client_id: client.acknowledged_frame  for client in self.clients.values()}  # Track the highest acked frame per client
-                
+                window_size =1
                 while base < len(frames)-1:
                     # Send frames in the window to all clients
-                    next_seq_num = self.safe_sendto_inwindow(frames,window_size,base,next_seq_num) 
+                    next_seq_num = self.safe_sendto_inwindow(address,frames,window_size,base,next_seq_num) 
 
-                # Wait for acknowledgments from all clients for frames in the window
+                    print('\rbase:',base,end='r',flush = True)
+                # Wait for acknowledgments from client for frames in the window
                     while base < next_seq_num and not all(ack >= base for ack in client_acks.values()):
                             ack, ack_address = self.recv_sock.recvfrom(1024)
-                            self.update_aknowledgements(ack,client_acks)
-                                        
+                            self.update_aknowledgements(address,ack,client_acks)
+                            base = min(client_acks.values())
+                            
+                            print('base:',base)
+                            print('next_seq_num:',next_seq_num)
+
                             #if timeout resend frames in window
-                            if time.time() - self.clients[ack_address].last_ack_time > 5:
+                            if time.time() - self.clients[address].last_ack_time > 5:
                                 print(f"Timeout occurred. Resending frames from {base} to {next_seq_num - 1}")
                                 for i in range(base, next_seq_num):
                                     seq_str = str(i).zfill(self.seq_number_size).encode()
                                     frame = seq_str + frames[i]
-                                    for client_address in self.clients:
-                                        self.send_sock.sendto(frame, client_address)
-                                        print(f"Resent frame {i} to {self.clients[client_address].client_id}")  
-                                        self.clients[client_address].last_ack_time=time.time()
-                    base = min(client_acks.values())
-                self.send_EOF_signal(len(frames)-1,client_acks)
+                                    self.send_sock.sendto(frame, address)
+                                    print(f"Resent frame {i} to {self.clients[address].client_id}")  
+                                    self.clients[address].last_ack_time=time.time()
+                    
+                self.send_EOF_signal(address,len(frames)-1,client_acks)
             
             except Exception as e :
                 print(f"Exception occured in function 'handle_transmission' : {e}")
