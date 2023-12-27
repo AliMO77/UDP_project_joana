@@ -84,7 +84,7 @@ class FileClient:
                             last = seq_number
                         else:
                             print(f"Client {self.id_process} received out-of-order frame {seq_number}. Expected: {expected_frame}")
-                            retransmit_msg = f"retransmit,{expected_frame},{self.id_process}"
+                            retransmit_msg = f"ack,{expected_frame},{self.id_process}"
                             self.sock.sendto(retransmit_msg.encode(), self.server_address)
                        
                         ack_message = f"ack,{last},{self.id_process}"
@@ -92,7 +92,7 @@ class FileClient:
                         print(f"Client {self.id_process} sent ack {seq_number}") 
                     except socket.timeout:
                             print(f"Client {self.id_process} did not receive frame {expected_frame}, requesting retransmission.")
-                            retransmit_msg = f"retransmit,{expected_frame},{self.id_process}"
+                            retransmit_msg = f"ack,{expected_frame},{self.id_process}"
                             self.sock.sendto(retransmit_msg.encode(), self.server_address)
 
            
