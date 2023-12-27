@@ -76,14 +76,16 @@ class FileServer:
                     client_info.total_clients = total_clients
                     client_info.window_size = window_size
 
-    def send_EOF_signal(self):
+    def send_EOF_signal(self,maxframe,client_acks):
         try:
             checksum = self.calculate_file_hash(self.file_path)
             eof_frame = f'EOF,{checksum}'
             with self.clients_lock:
-                for client in self.clients:  
-                    self.send_sock.sendto(eof_frame.encode(), client)
-                    print(f"Sent end-of-file signal to Client {self.clients[client].client_id}")
+                for client in self.clients:
+                    id =self.clients[client].client_id
+                    if client_acks[id] >= maxframe:
+                        self.send_sock.sendto(eof_frame.encode(), client)
+                        print(f"Sent end-of-file signal to Client {self.clients[client].client_id}")
         except Exception as e:
             print(f"Exception occured in function 'send_EOF_signal'{e}")
         
@@ -156,13 +158,13 @@ class FileServer:
                                         print(f"Resent frame {i} to {self.clients[client_address].client_id}")  
                                         self.clients[client_address].last_ack_time=time.time()
                     base = min(client_acks.values())
-                self.send_EOF_signal()
+                self.send_EOF_signal(len(frames)-1,client_acks)
             
             except Exception as e :
                 print(f"Exception occured in function 'handle_transmission' : {e}")
             finally:
                 # Safely removing the thread from the active list
-                with self.clients_lock:  # Assuming this lock is for all critical sections
+                with self.clients_lock:  
                     if threading.current_thread() in self.active_threads:
                         self.active_threads.remove(threading.current_thread())
                
@@ -242,12 +244,12 @@ class FileServer:
                 if thread is not threading.currentThread():
                     thread.join()
                 
-            print(f"Sayonara")
-            
+                
             end_time = time.time()  # Stop the timer 
             total_time = end_time - start_time  # Calculate total time taken
 
             print(f"\nServer shut down gracefully. Total running time: {total_time:.2f} seconds.")
+            print(f"Sayonara")
 
             self.send_sock.close()
             self.recv_sock.close()
