@@ -10,7 +10,7 @@ class FileClient:
         self.id_process = id_process
         self.total_process = total_process
         self.filename = filename
-        self.probability = 0
+        self.probability = probability
         self.window = window
 
         # Create a UDP socket
@@ -38,7 +38,7 @@ class FileClient:
         file_path = os.path.join(folder_path, file_path)
         try:
             # Send request to server
-            message = f"request_file,id_process={self.id_process},total_process={self.total_process},filename={self.filename},window_size={self.window}"
+            message = f"request_file,id_process={self.id_process},total_process={self.total_process},filename={self.filename},window_size={self.window},probability={self.probability}"
             self.sock.sendto(message.encode(), self.server_address)
             print(f"Client {self.id_process} sent request to server for file: {self.filename}")
 
@@ -87,6 +87,7 @@ class FileClient:
                             retransmit_msg = f"ack,{expected_frame},{self.id_process}"
                             self.sock.sendto(retransmit_msg.encode(), self.server_address)
                        
+                        
                         ack_message = f"ack,{last},{self.id_process}"
                         self.sock.sendto(ack_message.encode(), self.server_address)
                         print(f"Client {self.id_process} sent ack {seq_number}") 

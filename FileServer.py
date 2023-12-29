@@ -12,10 +12,12 @@ import traceback
 import random
 
 class ClientInfo:
-    def __init__(self, client_id, total_clients, window_size):
+    def __init__(self, client_id, total_clients, window_size,probability):
         self.client_id = client_id
         self.total_clients = total_clients
         self.window_size = window_size
+        self.probability = probability
+
         self.acknowledged_frame = -1
         self.retransmissions = 0
         self.last_ack_time = time.time()
@@ -75,15 +77,16 @@ class FileServer:
         return num_frames
     
     
-    def update_client_info(self, address, client_id, total_clients, window_size):
+    def update_client_info(self, address, client_id, total_clients, window_size,probability):
             with self.clients_lock:  # Acquire the lock before updating
                 if address not in self.clients:
-                    self.clients[address] = ClientInfo(client_id, total_clients, window_size)
+                    self.clients[address] = ClientInfo(client_id, total_clients, window_size,probability)
                 else :
                     client_info = self.clients[address]
                     client_info.client_id = client_id
                     client_info.total_clients = total_clients
                     client_info.window_size = window_size
+                    client_info.probability =probability
 
    
     def safe_sendto_inwindow(self, frames,base,r=None):
@@ -91,32 +94,32 @@ class FileServer:
             # Send frames in the window
             with self.clients_lock:
                 for client_address in self.clients:
+                    if random.random() > self.clients[client_address].probability:
+                        window_size = self.clients[client_address].window_size  
+                        next_seq_num = self.clients[client_address].acknowledged_frame+1 
+                        if next_seq_num < 0:
+                            next_seq_num=0
+                        end_seq_num = min(next_seq_num + window_size, len(frames))
                     
-                    window_size = self.clients[client_address].window_size  
-                    next_seq_num = self.clients[client_address].acknowledged_frame+1 
-                    if next_seq_num < 0:
-                        next_seq_num=0
-                    end_seq_num = min(next_seq_num + window_size, len(frames))
-                   
-                    # print('client: ',self.clients[client_address].client_id, 
-                    #       'next_seq_num: ',next_seq_num,
-                    #       'end_seq_num: ',end_seq_num,'all_acked_frames: ',self.clients[client_address].acked_frames) 
-                     
-                    while next_seq_num < end_seq_num :
-                        if next_seq_num not in self.clients[client_address].acked_frames:
-                            
-                            seq_str = str(next_seq_num).zfill(self.seq_number_size).encode()
-                            frame = seq_str + frames[next_seq_num]
-                            self.send_sock.sendto(frame, client_address)
-                            #print(f"\r\nSent frame {next_seq_num} to Client {self.clients[client_address].client_id} with win_size: {window_size}",end='',flush=True)
-                            self.clients[client_address].sent_frames.add(next_seq_num)
-                            self.bytes_sent += len(frame)
-                            if r is not None:
-                                self.clients[client_address].retransmissions+=1
-                            
-                        next_seq_num += 1
+                        # print('client: ',self.clients[client_address].client_id, 
+                        #       'next_seq_num: ',next_seq_num,
+                        #       'end_seq_num: ',end_seq_num,'all_acked_frames: ',self.clients[client_address].acked_frames) 
                         
-                    self.clients[client_address].next_seq_num = next_seq_num
+                        while next_seq_num < end_seq_num :
+                            if next_seq_num not in self.clients[client_address].acked_frames:
+                                
+                                seq_str = str(next_seq_num).zfill(self.seq_number_size).encode()
+                                frame = seq_str + frames[next_seq_num]
+                                self.send_sock.sendto(frame, client_address)
+                                #print(f"\r\nSent frame {next_seq_num} to Client {self.clients[client_address].client_id} with win_size: {window_size}",end='',flush=True)
+                                self.clients[client_address].sent_frames.add(next_seq_num)
+                                self.bytes_sent += len(frame)
+                                if r is not None:
+                                    self.clients[client_address].retransmissions+=1
+                                
+                            next_seq_num += 1
+                            
+                        self.clients[client_address].next_seq_num = next_seq_num
   
         except Exception as e:
             print(f"Exception occured in function 'safe_sendto_inwindow', Failed to send data: {e}")
@@ -157,7 +160,7 @@ class FileServer:
             frames = [file.read(self.udp_payload_size - self.seq_number_size) for _ in range(self.num_frames)]
             try:
                 # Initialize variables to keep track of frames and acknowledgments
-                base = 0
+                base = -1
               
                 while base < len(frames)-1:
                     # Send frames in the window to all clients
@@ -245,15 +248,16 @@ class FileServer:
                 # when client sends a message 'request_file'
                 if request == 'request_file':
                     # Extract the rest of the details from the message
-                    _, client_id, total_clients, filename, window_size = message_parts[0], message_parts[1], message_parts[2], message_parts[3], message_parts[4]
+                    _, client_id, total_clients, filename, window_size,probability = message_parts[0],message_parts[1], message_parts[2], message_parts[3], message_parts[4], message_parts[5]
 
                     client_id = int(client_id.split('=')[1])
                     total_clients = int(total_clients.split('=')[1])
                     filename = str(filename.split('=')[1])
                     window_size = int(window_size.split('=')[1])
+                    probability = float(probability.split('=')[1])
                     
                     client_requests.append((address, client_id, total_clients, filename, window_size))
-                    self.update_client_info(address, client_id, total_clients, window_size)
+                    self.update_client_info(address, client_id, total_clients, window_size,probability)
 
                     print(f"Received message: {request} from Client {client_id}. Total  requests collected: {len(client_requests)}")
                     
@@ -263,7 +267,7 @@ class FileServer:
                         print("\nAll client requests received. Starting to handle requests.\n")
                         print("================================ [ BEGIN ] ================================ ✨\n")
                         for client in self.clients.values():
-                            print(f"window size of client {client.client_id}: {client.window_size}")
+                            print(f"window size of client {client.client_id}: {client.window_size}, loss probability:{client.probability} ")
                         print("\n====================\n")
                         #for request in client_requests:
                             # Create a new thread for each client request

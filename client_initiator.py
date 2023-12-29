@@ -48,7 +48,7 @@ def request_file(total_processes):
 def start_clients_concurrently(total_processes, filename):
     threads = []
     for i in range(1, total_processes + 1):
-        probability = random.random()
+        probability = round(random.random(),1)
         window=random.randint(1, 10)
         # Create a new thread for each client
         thread = threading.Thread(target=start_client, args=(i, total_processes, filename,probability,window,barrier))
