@@ -36,8 +36,15 @@ Running the Client(s):
 
     python3 client_initiator.py <num_processes> <filename>
 
+    <id_process>: Automatically assigned when client is instantiated, no need to specify it.
     <num_processes>: Total number of client processes to simulate.
     <filename>: The name of the file to transfer.
+     
+    <probability:>: randomly assigned client is instantiated, no need to specify it.
+    <protocol>: GBN only.no need to specify it.
+    <probability:>: randomly assigned when client is instantiated, no need to specify it.
+
+    
 
 3. Example:
 
