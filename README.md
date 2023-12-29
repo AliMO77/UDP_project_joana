@@ -63,7 +63,9 @@ You can customize various parameters within the FileClient and FileServer classe
     Window size
     Timeout durations
     And more
-
+    
+3. Caveat:
+    Only works with text files. (you just need to replace the decoding if you need to send/receive other files)
 
 **Notes for Further Development:**
 - **Comments and Documentation**: Ensure your code is well-commented and documented. This helps others understand and contribute to your project.
